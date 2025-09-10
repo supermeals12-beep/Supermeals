@@ -1,0 +1,342 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  OUT_OF_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  PAYPAL
+  STRIPE
+  BANK_TRANSFER
+  CASH_ON_DELIVERY
+}
+
+enum Roles {
+  ADMIN
+  END_USER
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum MessType {
+  VEG
+  NON_VEG
+  MIXED
+  VEGAN
+}
+
+enum FoodType {
+  VEG
+  NON_VEG
+  VEGAN
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  EVENING_SNACK
+  DINNER
+}
+
+model User {
+  id        String   @id @default(uuid()) @map("id")
+  name      String   @map("name")
+  email     String   @unique @map("email")
+  phone     String   @map("phone")
+  password  String?  @map("password")
+  role      Roles    @default(END_USER)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  CustomerProfile CustomerProfile?
+  AdminProfile    AdminProfile?
+  UserOtp         UserOtp[]
+  Subscription    Subscription[]
+  Cart            Cart[]
+
+  @@map("users")
+}
+
+model CustomerProfile {
+  id             String  @id @default(uuid())
+  address        String?
+  city           String?
+  state          String?
+  postalCode     String?
+  country        String?
+  profilePicture String? @map("profile_picture")
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id])
+
+  addresses Address[]
+  reviews   Review[]
+  orders    Order[]
+  cart      CartItem[]
+  Wishlist  Wishlist[]
+}
+
+model AdminProfile {
+  id             String  @id @default(uuid())
+  name           String? @map("name")
+  phone          String? @map("phone")
+  profilePicture String? @map("profile_picture")
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id])
+
+  notes String? // any internal notes about the admin
+}
+
+model UserOtp {
+  id        String   @id @default(uuid())
+  otp       String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Mess {
+  id           String         @id @default(uuid())
+  name         String // Name of the mess, e.g. "Hostel A Veg Mess"
+  type         MessType // VEG / NON_VEG / MIXED / VEGAN
+  location     String? // Optional (Hostel name, campus area, etc.)
+  capacity     Int? // Optional (how many students it serves)
+  contact      String? // Mess manager or contact person
+  menus        WeeklyMenu[] // Relation: one mess has multiple weekly menus
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  MessImage    MessImage[]
+  Subscription Subscription[]
+  Review       Review[]
+
+  @@map("messes")
+}
+
+model MessImage {
+  id        String   @id @default(uuid())
+  messId    String
+  url       String
+  altText   String?
+  isMain    Boolean  @default(false) // Main display image
+  sortOrder Int      @default(0) // Order in gallery
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mess Mess @relation(fields: [messId], references: [id], onDelete: Cascade)
+
+  @@map("mess_images")
+}
+
+model WeeklyMenu {
+  id           String         @id @default(uuid())
+  dayOfWeek    DayOfWeek
+  messId       String
+  mess         Mess           @relation(fields: [messId], references: [id], onDelete: Cascade)
+  meals        Meal[]         @relation("DayMeals")
+  Subscription Subscription[]
+  Review       Review[]
+
+  @@unique([messId, dayOfWeek]) // Only one menu per day
+  @@map("weekly_menus")
+}
+
+model Meal {
+  id       String     @id @default(uuid())
+  mealType MealType
+  items    MenuItem[] @relation("MealItems")
+  menuId   String
+  menu     WeeklyMenu @relation("DayMeals", fields: [menuId], references: [id], onDelete: Cascade)
+  CartItem CartItem[]
+  Wishlist Wishlist[]
+
+  @@map("meals")
+}
+
+model MenuItem {
+  id       String     @id @default(uuid())
+  name     String
+  category FoodType
+  isVeg    Boolean    @default(true)
+  calories Int?
+  price    Float?
+  mealId   String
+  meal     Meal       @relation("MealItems", fields: [mealId], references: [id], onDelete: Cascade)
+  CartItem CartItem[]
+  Wishlist Wishlist[]
+
+  @@map("menu_items")
+}
+
+model Subscription {
+  id     String @id @default(uuid())
+  userId String // Reference to User (student)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  messId String
+  mess   Mess   @relation(fields: [messId], references: [id], onDelete: Cascade)
+
+  menuId String? // Optional: if subscription is tied to a specific menu/day
+  menu   WeeklyMenu? @relation(fields: [menuId], references: [id], onDelete: SetNull)
+
+  pricePerDay Float
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  Order       Order[]
+
+  @@map("subscriptions")
+}
+
+model Order {
+  id          String    @id @default(uuid())
+  orderNumber String    @unique
+  validFrom   DateTime // replaces startDate
+  validTill   DateTime? // replaces endDate
+  totalPrice  Float
+  trackingId  String? // optional delivery tracking
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  status        OrderStatus    @default(PLACED)
+  paymentStatus PaymentStatus  @default(PENDING)
+  paymentMethod PaymentMethod?
+
+  shippingAddressId String?
+  shippingAddress   Address? @relation("ShippingAddress", fields: [shippingAddressId], references: [id]) // ✅ fixed
+
+  customerProfileId String?
+  customerProfile   CustomerProfile? @relation(fields: [customerProfileId], references: [id])
+
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  notes    String? // optional extra info
+  quantity Int?    @default(1)
+}
+
+model Cart {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items     CartItem[] // one cart can have many items
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id     String @id @default(uuid())
+  cartId String
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  // Either Meal or MenuItem
+  mealId String?
+  meal   Meal?   @relation(fields: [mealId], references: [id], onDelete: SetNull)
+
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+
+  quantity          Int              @default(1)
+  price             Float // price snapshot (in case price changes later)
+  CustomerProfile   CustomerProfile? @relation(fields: [customerProfileId], references: [id])
+  customerProfileId String?
+}
+
+model Address {
+  id                String   @id @default(uuid())
+  customerProfileId String?
+  name              String
+  address           String
+  city              String
+  state             String
+  postalCode        String
+  country           String?
+  phone             String?
+  isDefault         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  shippingOrders  Order[]          @relation("ShippingAddress")
+  CustomerProfile CustomerProfile? @relation(fields: [customerProfileId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  rating    Int // 1-5 stars
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customerProfileId String?
+  CustomerProfile   CustomerProfile? @relation(fields: [customerProfileId], references: [id])
+
+  messId String
+  mess   Mess   @relation(fields: [messId], references: [id], onDelete: Cascade)
+
+  menuId String? // Optional: if subscription is tied to a specific menu/day
+  menu   WeeklyMenu? @relation(fields: [menuId], references: [id], onDelete: SetNull)
+
+  @@unique([customerProfileId, messId])
+  @@map("reviews")
+}
+
+model Wishlist {
+  id String @id @default(uuid())
+
+  productId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mealId String?
+  meal   Meal?   @relation(fields: [mealId], references: [id], onDelete: SetNull)
+
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+
+  customerProfileId String
+  customerProfile   CustomerProfile @relation(fields: [customerProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([customerProfileId, mealId, menuItemId]) // Prevent duplicates
+  @@map("wishlist")
+}
