@@ -74,19 +74,19 @@ enum MealType {
 }
 
 model User {
-  id        String   @id @default(uuid()) @map("id")
-  name      String   @map("name")
-  email     String   @unique @map("email")
-  phone     String   @map("phone")
-  password  String?  @map("password")
-  role      Roles    @default(END_USER)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid()) @map("id")
+  name        String   @map("name")
+  email       String   @unique @map("email")
+  phone       String   @map("phone")
+  role        Roles    @default(END_USER)
+  is_verified Boolean  @default(false)
+  otpId       String?  @unique
+  otp         UserOtp? @relation(fields: [otpId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   CustomerProfile CustomerProfile?
   AdminProfile    AdminProfile?
-  UserOtp         UserOtp[]
-  Subscription    Subscription[]
   Cart            Cart[]
 
   @@map("users")
@@ -94,11 +94,6 @@ model User {
 
 model CustomerProfile {
   id             String  @id @default(uuid())
-  address        String?
-  city           String?
-  state          String?
-  postalCode     String?
-  country        String?
   profilePicture String? @map("profile_picture")
   userId         String  @unique
   user           User    @relation(fields: [userId], references: [id])
@@ -112,26 +107,18 @@ model CustomerProfile {
 
 model AdminProfile {
   id             String  @id @default(uuid())
-  name           String? @map("name")
-  phone          String? @map("phone")
   profilePicture String? @map("profile_picture")
   userId         String  @unique
   user           User    @relation(fields: [userId], references: [id])
-
-  notes String? // any internal notes about the admin
 }
 
 model UserOtp {
   id        String   @id @default(uuid())
   otp       String
   expiresAt DateTime
-  used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id])
-
-  @@index([userId])
+  user User?
 }
 
 model Mess {
@@ -207,9 +194,9 @@ model MenuItem {
 }
 
 model Subscription {
-  id     String @id @default(uuid())
-  userId String // Reference to User (student)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String @id @default(uuid())
+  subscriptionName String
+  description      String
 
   messId String
   mess   Mess   @relation(fields: [messId], references: [id], onDelete: Cascade)
@@ -217,7 +204,7 @@ model Subscription {
   menuId String? // Optional: if subscription is tied to a specific menu/day
   menu   WeeklyMenu? @relation(fields: [menuId], references: [id], onDelete: SetNull)
 
-  pricePerDay Float
+  pricePerDay Decimal  @db.Decimal(10, 2)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -324,7 +311,6 @@ model Review {
 model Wishlist {
   id String @id @default(uuid())
 
-  productId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
